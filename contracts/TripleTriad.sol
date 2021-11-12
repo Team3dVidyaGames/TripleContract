@@ -35,7 +35,12 @@ contract TripleTriad is Ownable {
     event GameJoined(address player, uint256 gameId);
 
     /// @notice Event emitted when player put the card.
-    event CardPlaced(address user, uint256 gameId, uint256 cardId, uint8 position);
+    event CardPlaced(
+        address user,
+        uint256 gameId,
+        uint256 cardId,
+        uint8 position
+    );
 
     // Game data
     struct GameData {
@@ -423,7 +428,6 @@ contract TripleTriad is Ownable {
         // Add the owner on board
         ownerOnBoard[_gameId][_cardId] = msg.sender;
 
-
         emit CardPlaced(msg.sender, _gameId, _cardId, _position);
 
         // Returns its own events on capture
@@ -446,6 +450,7 @@ contract TripleTriad is Ownable {
                 return true;
             }
         }
+        return false;
     }
 
     /*  Function to compare the placed card's values against cards found on the board.
@@ -465,7 +470,7 @@ contract TripleTriad is Ownable {
             // Player (game starter) is NOT putting the card right now, must be opponent
             targetIsPlayer = true;
         } else {
-          // Opponent (game joiner) is NOT putting the card right now, must be player
+            // Opponent (game joiner) is NOT putting the card right now, must be player
             targetIsOpponent = true;
         }
 
@@ -573,9 +578,11 @@ contract TripleTriad is Ownable {
      * @param _cardId Current card id
      * @return Array of card values (top, right, bottom, left)
      */
-    function fetchCardValues(
-        uint256 _cardId
-    ) private returns (uint8[] memory) {
+    function fetchCardValues(uint256 _cardId)
+        private
+        view
+        returns (uint8[] memory)
+    {
         uint8[] memory features = new uint8[](4);
         features[0] = Inventory.allItems(_cardId).feature1;
         features[1] = Inventory.allItems(_cardId).feature2;
@@ -585,7 +592,7 @@ contract TripleTriad is Ownable {
         return features;
     }
 
-     /*  Get adjacent cards for the card placed with function putCard() 
+    /*  Get adjacent cards for the card placed with function putCard() 
         Returns an array of adjacent cards 
         An ID of 0 means there is no card at that position.
         
@@ -687,7 +694,13 @@ contract TripleTriad is Ownable {
             for (uint256 i = 0; i < 5; i++) {
                 if (data.opponentHand[i] == _cardId) {
                     // transfer the token
-                    Inventory.transferFrom(data.opponent, data.player, _cardId);
+                    Inventory.safeTransferFrom(
+                        data.opponent,
+                        data.player,
+                        _cardId,
+                        1,
+                        ""
+                    );
                     playerHasBuiltHand[data.opponent] = false;
                 }
             }
@@ -695,7 +708,13 @@ contract TripleTriad is Ownable {
             // data.player has lost the game...
             for (uint256 i = 0; i < 5; i++) {
                 if (data.playerHand[i] == _cardId) {
-                    Inventory.transferFrom(data.player, data.opponent, _cardId);
+                    Inventory.safeTransferFrom(
+                        data.player,
+                        data.opponent,
+                        _cardId,
+                        1,
+                        ""
+                    );
                     playerHasBuiltHand[data.player] = false;
                 }
             }
@@ -731,7 +750,7 @@ contract TripleTriad is Ownable {
         bool status;
 
         // IS THIS RIGHT?
-        if (now - data.endDate >= timeLimit) {
+        if (block.timestamp - data.endDate >= timeLimit) {
             status = true;
         }
         return status;
