@@ -100,7 +100,7 @@ contract TripleTriad is Ownable {
 
     IInventory public Inventory;
 
-    IRandomNumberGenerator RNG;
+    IRandomNumberGenerator public RNG;
 
     // GameID => (CardID => Card owner on the board)
     // Note: this is not the same as inv.ownerOf()
