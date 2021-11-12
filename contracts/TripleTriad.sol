@@ -42,6 +42,18 @@ contract TripleTriad is Ownable {
         uint8 position
     );
 
+    /// @notice Event emitted when card has captured.
+    event CardCaptured(address user, uint256 cardSide);
+
+    /// @notice Event emitted when score has assigned.
+    event ScoresAssigned(uint8 playerScore, uint8 opponentScore);
+
+    /// @notice Event emitted when game has finished.
+    event GameFinished(uint256 gameId, address winner);
+
+    /// @notice Event emitted when the winner has claimed the card.
+    event CardClaimed(address winner, uint256 cardId);
+
     // Game data
     struct GameData {
         address player; // game opener
@@ -276,14 +288,14 @@ contract TripleTriad is Ownable {
             );
         }
 
-        return _buildPlayerHand(cardsToAdd, msg.sender);
+        return buildPlayerHand(cardsToAdd, msg.sender);
     }
 
     /**
      * @dev Private function to build the player hand. This functon can be called after checking passed in buildPlayerHand().
      * @return Array with 5 card ID's (tokenIds from Inventory)
      */
-    function _buildPlayerHand(uint256[5] memory _cardsToAdd, address _player)
+    function buildPlayerHand(uint256[5] memory _cardsToAdd, address _player)
         private
         returns (uint256[5] memory)
     {
@@ -377,8 +389,8 @@ contract TripleTriad is Ownable {
 
     /**
      * @dev External function to put the card. This function can be called when the game hasn't finished and caller must be the part of the game.
-     * @param _gameId Current game id
-     * @param _cardId Current card id
+     * @param _gameId Game id
+     * @param _cardId Card id
      * @param _position Card position
      */
     function putCard(
@@ -436,8 +448,8 @@ contract TripleTriad is Ownable {
 
     /**
      * @dev Private function to check whether a given card is already placed on the board or not.
-     * @param _gameId Current game id
-     * @param _cardId Current card id
+     * @param _gameId Game id
+     * @param _cardId Card id
      * @return Bool variable to check the given card is already placed or not
      */
     function cardIsOnBoard(uint256 _gameId, uint256 _cardId)
@@ -453,8 +465,14 @@ contract TripleTriad is Ownable {
         return false;
     }
 
-    /*  Function to compare the placed card's values against cards found on the board.
-        Captures cards if values are bigger and the card is not yet one of players' cards */
+    /**
+     * @dev Private function to compare the placed card's values against cards found on the board. 
+            Captures cards if values are bigger and the card is not yet one of players' cards.
+     * @param _gameId Game id
+     * @param _cardId Card id
+     * @param _position Card position
+     * @param _isFinalCard Bool variable to check if the card is last.
+     */
     function compareCardValuesAndCapture(
         uint256 _gameId,
         uint256 _cardId,
@@ -467,10 +485,8 @@ contract TripleTriad is Ownable {
         bool targetIsOpponent;
 
         if (data.player != msg.sender) {
-            // Player (game starter) is NOT putting the card right now, must be opponent
             targetIsPlayer = true;
         } else {
-            // Opponent (game joiner) is NOT putting the card right now, must be player
             targetIsOpponent = true;
         }
 
@@ -482,100 +498,73 @@ contract TripleTriad is Ownable {
 
         uint8[] memory placedCard = fetchCardValues(_cardId);
 
-        /*  ID's of cards adjacent to placedCard: [top, right, bottom, left]
-            ID of 0 means there is no card at that position 
-            so if _adjacentCards[0][n] = 0 then there is no card! */
-        uint256[] memory _adjacentCards = getAdjacentCards(_gameId, _position);
-
-        /*  Need to check if an actual card (non zero value) is adjacent
-        
-            Think like this: placedCard is the "center" card to check all adjacent cards against
-            If a card is found adjacent to placedCard, compare those values
-            
-            Reference:
-            adjacentCards[0] = topCardID;
-            adjacentCards[1] = rightCardID;
-            adjacentCards[2] = bottomCardID;
-            adjacentCards[3] = leftCardID;
-            
-            And for values:
-            0 - top
-            1 - right 
-            2 - bottom 
-            3 - left 
-        */
+        uint256[] memory adjacentCards = getAdjacentCards(_gameId, _position);
 
         // Check top card
-        if (_adjacentCards[0] != 0) {
-            uint256 topCard = _adjacentCards[0];
-            // Get top card's bottom value
+        if (adjacentCards[0] != 0) {
+            uint256 topCard = adjacentCards[0];
             uint8 bottomValue = fetchCardValues(topCard)[2];
-            // If value is smaller & is not the player's card
             if (
                 bottomValue < placedCard[0] &&
                 ownerOnBoard[_gameId][topCard] != msg.sender
             ) {
-                // Capture the adjacent card
                 ownerOnBoard[_gameId][topCard] = msg.sender;
-                _assignScores(targetIsPlayer, targetIsOpponent, _gameId);
-                //    emit CardCaptured(msg.sender, topCard);
+                assignScores(targetIsPlayer, targetIsOpponent, _gameId);
+                emit CardCaptured(msg.sender, topCard);
             }
         }
+
         // Check right card
-        if (_adjacentCards[1] != 0) {
-            uint256 rightCard = _adjacentCards[1];
-            // Get right card's left value
+        if (adjacentCards[1] != 0) {
+            uint256 rightCard = adjacentCards[1];
             uint8 leftValue = fetchCardValues(rightCard)[3];
             if (
                 leftValue < placedCard[1] &&
                 ownerOnBoard[_gameId][rightCard] != msg.sender
             ) {
-                // Capture the adjacent card
                 ownerOnBoard[_gameId][rightCard] = msg.sender;
-                _assignScores(targetIsPlayer, targetIsOpponent, _gameId);
-                //    emit CardCaptured(msg.sender, rightCard);
+                assignScores(targetIsPlayer, targetIsOpponent, _gameId);
+                emit CardCaptured(msg.sender, rightCard);
             }
         }
+
         // Check bottom card
-        if (_adjacentCards[2] != 0) {
-            uint256 bottomCard = _adjacentCards[2];
-            // Get bottom card's top value
+        if (adjacentCards[2] != 0) {
+            uint256 bottomCard = adjacentCards[2];
             uint8 topValue = fetchCardValues(bottomCard)[0];
             if (
                 topValue < placedCard[2] &&
                 ownerOnBoard[_gameId][bottomCard] != msg.sender
             ) {
-                // Capture the adjacent card
                 ownerOnBoard[_gameId][bottomCard] = msg.sender;
-                _assignScores(targetIsPlayer, targetIsOpponent, _gameId);
-                //   emit CardCaptured(msg.sender, bottomCard);
+                assignScores(targetIsPlayer, targetIsOpponent, _gameId);
+                emit CardCaptured(msg.sender, bottomCard);
             }
         }
+
         // Check left card
-        if (_adjacentCards[3] != 0) {
-            uint256 leftCard = _adjacentCards[3];
-            // Get left card's right value
+        if (adjacentCards[3] != 0) {
+            uint256 leftCard = adjacentCards[3];
             uint8 rightValue = fetchCardValues(leftCard)[1];
             if (
                 rightValue < placedCard[3] &&
                 ownerOnBoard[_gameId][leftCard] != msg.sender
             ) {
-                // Capture the adjacent card
                 ownerOnBoard[_gameId][leftCard] = msg.sender;
-                _assignScores(targetIsPlayer, targetIsOpponent, _gameId);
-                //   emit CardCaptured(msg.sender, leftCard);
+                assignScores(targetIsPlayer, targetIsOpponent, _gameId);
+                emit CardCaptured(msg.sender, leftCard);
             }
         }
 
         // Final card will finish the game
         if (_isFinalCard) {
-            _finalize(_gameId);
+            finalize(_gameId);
         }
     }
 
     /**
      * @dev Private function to get the features of card.
-     * @param _cardId Current card id
+     * @param _cardId Card id
      * @return Array of card values (top, right, bottom, left)
      */
     function fetchCardValues(uint256 _cardId)
@@ -592,78 +581,74 @@ contract TripleTriad is Ownable {
         return features;
     }
 
-    /*  Get adjacent cards for the card placed with function putCard() 
-        Returns an array of adjacent cards 
-        An ID of 0 means there is no card at that position.
-        
-        Refernce grid (3x3 board):
-        
-        0--1--2
-        3--4--5
-        6--7--8
-    */
+    /**
+     * @dev Private function to get the adjacent cards.
+            Refernce grid (3x3 board):
+            0--1--2
+            3--4--5
+            6--7--8
+     * @param _gameId Game id
+     * @param _position Card position
+     * @return Array of adjacent cards
+     */
     function getAdjacentCards(uint256 _gameId, uint8 _position)
         private
         view
         returns (uint256[] memory)
     {
         uint256[] memory adjacentCards = new uint256[](4);
-
-        uint256 placedCardPosition = _position;
         uint256 topCard;
         uint256 rightCard;
         uint256 bottomCard;
         uint256 leftCard;
 
-        if (placedCardPosition == 0) {
+        if (_position == 0) {
             topCard = 0;
             rightCard = positions[_gameId][1];
             bottomCard = positions[_gameId][3];
             leftCard = 0;
-        } else if (placedCardPosition == 1) {
+        } else if (_position == 1) {
             topCard = 0;
             rightCard = positions[_gameId][2];
             bottomCard = positions[_gameId][4];
             leftCard = positions[_gameId][0];
-        } else if (placedCardPosition == 2) {
+        } else if (_position == 2) {
             topCard = 0;
             rightCard = 0;
             bottomCard = positions[_gameId][5];
             leftCard = positions[_gameId][1];
-        } else if (placedCardPosition == 3) {
+        } else if (_position == 3) {
             topCard = positions[_gameId][0];
             rightCard = positions[_gameId][4];
             bottomCard = positions[_gameId][6];
             leftCard = 0;
-        } else if (placedCardPosition == 4) {
+        } else if (_position == 4) {
             topCard = positions[_gameId][1];
             rightCard = positions[_gameId][5];
             bottomCard = positions[_gameId][7];
             leftCard = positions[_gameId][3];
-        } else if (placedCardPosition == 5) {
+        } else if (_position == 5) {
             topCard = positions[_gameId][2];
             rightCard = 0;
             bottomCard = positions[_gameId][8];
             leftCard = positions[_gameId][4];
-        } else if (placedCardPosition == 6) {
+        } else if (_position == 6) {
             topCard = positions[_gameId][3];
             rightCard = positions[_gameId][7];
             bottomCard = 0;
             leftCard = 0;
-        } else if (placedCardPosition == 7) {
+        } else if (_position == 7) {
             topCard = positions[_gameId][4];
             rightCard = positions[_gameId][8];
             bottomCard = 0;
             leftCard = positions[_gameId][6];
         } else {
-            // Assume card was placed in position 8 when all else fails
             topCard = positions[_gameId][5];
             rightCard = 0;
             bottomCard = 0;
             leftCard = positions[_gameId][7];
         }
 
-        // Add to array
         adjacentCards[0] = topCard;
         adjacentCards[1] = rightCard;
         adjacentCards[2] = bottomCard;
@@ -672,28 +657,84 @@ contract TripleTriad is Ownable {
         return adjacentCards;
     }
 
-    // Finalize abandoned game that has timeLimit passed and is not yet finished
-    function endAbandonedGame(uint256 _gameId) public notFinished(_gameId) {
-        require(timeIsUp(_gameId), "Triple Triad: This game is still ongoing");
-        _finalize(_gameId);
+    /**
+     * @dev Private function to assign scores.
+     * @param _targetIsPlayer Bool variable to check the target player
+     * @param _targetIsOpponent Bool variable to check the target opponent
+     * @param _gameId Game id
+     */
+    function assignScores(
+        bool _targetIsPlayer,
+        bool _targetIsOpponent,
+        uint256 _gameId
+    ) private {
+        GameData storage data = gameData[_gameId];
+        if (_targetIsPlayer) {
+            data.playerScore--;
+            data.opponentScore++;
+        }
+        if (_targetIsOpponent) {
+            data.opponentScore--;
+            data.playerScore++;
+        }
+
+        emit ScoresAssigned(data.playerScore, data.opponentScore);
     }
 
-    // Claim a card from a finished game
-    function claimCard(uint256 _gameId, uint256 _cardId) public {
+    /**
+     * @dev Private function to finish the game. Assigns the winner of the game based on current scores. If it's a draw, gives winner status to 0x0
+     * @param _gameId Game id
+     */
+    function finalize(uint256 _gameId) private {
         GameData storage data = gameData[_gameId];
 
-        // Require msg.sender to be the winner of this game
-        // So that only the winner can pick a card from the other players' hand
+        data.gameFinished = true;
+        ingame[data.player] = false;
+        ingame[data.opponent] = false;
+
+        address winner;
+
+        if (data.playerScore > data.opponentScore) {
+            winner = data.player;
+        } else if (data.opponentScore > data.playerScore) {
+            winner = data.opponent;
+        } else {
+            winner = address(0);
+        }
+        data.winner = winner;
+
+        emit GameFinished(_gameId, winner);
+    }
+
+    /**
+     * @dev External function to finish the game if it is over time to play.
+     * @param _gameId Game id
+     */
+    function endAbandonedGame(uint256 _gameId) external notFinished(_gameId) {
+        GameData memory data = gameData[_gameId];
+        require(
+            block.timestamp - data.endDate >= timeLimit,
+            "Triple Triad: This game is still ongoing"
+        );
+        finalize(_gameId);
+    }
+
+    /**
+     * @dev External function to claim a card from a finished game.
+     * @param _gameId Ggame id
+     * @param _cardId Card id
+     */
+    function claimCard(uint256 _gameId, uint256 _cardId) external {
+        GameData memory data = gameData[_gameId];
+
         require(
             msg.sender == data.winner,
-            "Triple Triad: msg.sender is not the winner of this game"
+            "Triple Triad: Caller is not the winner of this game"
         );
 
         if (msg.sender == data.player) {
-            // data.opponent has lost the game...
             for (uint256 i = 0; i < 5; i++) {
                 if (data.opponentHand[i] == _cardId) {
-                    // transfer the token
                     Inventory.safeTransferFrom(
                         data.opponent,
                         data.player,
@@ -704,8 +745,7 @@ contract TripleTriad is Ownable {
                     playerHasBuiltHand[data.opponent] = false;
                 }
             }
-        } else if (msg.sender == data.opponent) {
-            // data.player has lost the game...
+        } else {
             for (uint256 i = 0; i < 5; i++) {
                 if (data.playerHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
@@ -718,85 +758,9 @@ contract TripleTriad is Ownable {
                     playerHasBuiltHand[data.player] = false;
                 }
             }
-        } else {
-            // who the fuck is msg.sender?
-            revert();
         }
-    }
 
-    function listOpenGames() public view returns (uint256[] memory) {
-        return _allOpenGames();
-    }
-
-    /* INTERNAL FUNCTIONS */
-
-    // Return an array of all OPEN game IDs
-    function _allOpenGames() public view returns (uint256[] memory) {
-        uint256[] memory result;
-        uint256 index;
-        for (uint256 i = 0; i < gameData.length; i++) {
-            GameData storage data = gameData[i];
-            if (data.gameOpen) {
-                result[index] = i;
-            }
-            index++;
-        }
-        return result;
-    }
-
-    // Checks if game time limit is reached
-    function timeIsUp(uint256 _gameId) public view returns (bool) {
-        GameData storage data = gameData[_gameId];
-        bool status;
-
-        // IS THIS RIGHT?
-        if (block.timestamp - data.endDate >= timeLimit) {
-            status = true;
-        }
-        return status;
-    }
-
-    // Finish the game (declade internal)
-    function _finalize(uint256 _gameId) public {
-        GameData storage data = gameData[_gameId];
-        data.gameFinished = true;
-        ingame[data.player] = false;
-        ingame[data.opponent] = false;
-        determineWinner(_gameId);
-    }
-
-    // This must be internal later on!!
-    // Assigns the winner of the game based on current scores
-    // If it's a draw, gives winner status to 0x0
-    function determineWinner(uint256 _gameId) public {
-        GameData storage data = gameData[_gameId];
-        address winner;
-        if (data.playerScore > data.opponentScore) {
-            winner = data.player;
-        } else if (data.opponentScore > data.playerScore) {
-            winner = data.opponent;
-        } else {
-            winner = address(0);
-        }
-        data.winner = winner;
-        //     emit GameWon(winner, _gameId);
-    }
-
-    // Assign scores
-    function _assignScores(
-        bool targetIsPlayer,
-        bool targetIsOpponent,
-        uint256 _gameId
-    ) internal {
-        GameData storage data = gameData[_gameId];
-        if (targetIsPlayer) {
-            data.playerScore--;
-            data.opponentScore++;
-        }
-        if (targetIsOpponent) {
-            data.opponentScore--;
-            data.playerScore++;
-        }
+        emit CardClaimed(msg.sender, _cardId);
     }
 
     /**
