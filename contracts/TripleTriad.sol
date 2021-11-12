@@ -54,6 +54,9 @@ contract TripleTriad is Ownable {
     /// @notice Event emitted when the winner has claimed the card.
     event CardClaimed(address winner, uint256 cardId);
 
+    /// @notice Event emitted when the cards have added.
+    event CardsAdded(address user, uint256[5] cards);
+
     // Game data
     struct GameData {
         address player; // game opener
@@ -88,8 +91,6 @@ contract TripleTriad is Ownable {
 
     // Unix timestamp for how long a game is allowed to stay open
     uint32 public timeLimit;
-
-    uint8 public deviation = 1;
 
     // All games ever created
     GameData[] public gameData;
@@ -270,16 +271,13 @@ contract TripleTriad is Ownable {
 
     /**
      * @dev External function to add user selected cards from the Inventory contract into the playerHand array that the user can play with.
-     * @return Array with 5 card ID's (tokenIds from Inventory)
+     * @param _cardsToAdd Cards array to add
      */
-    function buildPlayerHand(uint256[5] memory cardsToAdd)
-        external
-        returns (uint256[5] memory)
-    {
+    function buildPlayerHand(uint256[5] memory _cardsToAdd) external {
         for (uint256 i = 0; i < 5; i++) {
-            uint256 templateId = Inventory.allItems(cardsToAdd[i]).templateId;
+            uint256 templateId = Inventory.allItems(_cardsToAdd[i]).templateId;
             require(
-                Inventory.balanceOf(msg.sender, cardsToAdd[i]) > 0,
+                Inventory.balanceOf(msg.sender, _cardsToAdd[i]) > 0,
                 "Triple Triad: Player is not the owner of this card"
             );
             require(
@@ -288,21 +286,10 @@ contract TripleTriad is Ownable {
             );
         }
 
-        return buildPlayerHand(cardsToAdd, msg.sender);
-    }
+        playerHands[msg.sender] = _cardsToAdd;
+        playerHasBuiltHand[msg.sender] = true;
 
-    /**
-     * @dev Private function to build the player hand. This functon can be called after checking passed in buildPlayerHand().
-     * @return Array with 5 card ID's (tokenIds from Inventory)
-     */
-    function buildPlayerHand(uint256[5] memory _cardsToAdd, address _player)
-        private
-        returns (uint256[5] memory)
-    {
-        playerHands[_player] = _cardsToAdd;
-        playerHasBuiltHand[_player] = true;
-
-        return _cardsToAdd;
+        emit CardsAdded(msg.sender, _cardsToAdd);
     }
 
     /**
@@ -349,10 +336,9 @@ contract TripleTriad is Ownable {
 
         if (data.noMercy) {
             // Require opponent hand to be fair
-            // Note: allows for a set +deviation
             require(
                 averageOfTopTwo(playerHands[msg.sender]) <=
-                    data.avgOfTopTwo + deviation,
+                    data.avgOfTopTwo + 1,
                 "Triple Triad: Hand has unfair advantage"
             );
         }
