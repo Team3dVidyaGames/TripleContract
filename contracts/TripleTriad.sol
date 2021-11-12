@@ -14,10 +14,10 @@ contract TripleTriad is Ownable {
     event TripleTriadDeployed();
 
     /// @notice Event emitted when owner withdrew the ETH.
-    event EthWithdrew(address receiver);
+    event EthWithdrew(address owner, uint256 amount);
 
     /// @notice Event emitted when owner withdrew the ERC20 token.
-    event ERC20TokenWithdrew(address receiver);
+    event ERC20TokenWithdrew(address owner, address tokenAddr, uint256 amount);
 
     /// @notice Event emitted when owner added the ranks.
     event RanksAdded(Card[] _cards);
@@ -56,6 +56,9 @@ contract TripleTriad is Ownable {
 
     /// @notice Event emitted when the cards have added.
     event CardsAdded(address user, uint256[5] cards);
+
+    /// @notice Event emitted when owner withdrew the nft.
+    event NFTWithdrew(address owner, uint256 tokenId, uint256 amount);
 
     // Game data
     struct GameData {
@@ -158,15 +161,15 @@ contract TripleTriad is Ownable {
     constructor(
         IInventory _Inventory,
         IRandomNumberGenerator _RNG,
-        uint256 _timeLimit,
+        uint32 _timeLimit,
         uint256 _templateId_START,
         uint256 _templateId_END
     ) {
         Inventory = _Inventory;
-        timeLimit = uint32(_timeLimit);
+        RNG = _RNG;
+        timeLimit = _timeLimit;
         templateId_START = _templateId_START;
         templateId_END = _templateId_END;
-        RNG = _RNG;
 
         emit TripleTriadDeployed();
     }
@@ -174,7 +177,7 @@ contract TripleTriad is Ownable {
     /**
      * @dev External function to add ranks for level 1 cards so openStarterPack() knows the correct item features and templateIds to use. 
             This function can be called only by owner.
-     * @param _cards Array of card struct
+     * @param _cards Array of cards
      */
     function addRanks(Card[] memory _cards) external onlyOwner {
         for (uint256 i = 0; i < _cards.length; i++) {
@@ -241,8 +244,8 @@ contract TripleTriad is Ownable {
     }
 
     /**
-     * @dev External function to get the tempalteIds that users owns.
-     * @return An array of templateIds (items that fall within the Triple Triad templates range in Inventory) that _player owns
+     * @dev External function to get the tempalte ids that users own.
+     * @return An array of template ids (items that fall within the Triple Triad templates range in Inventory) that _player owns
      * @return Array with the total counts for each of these templateIds the _player owns
      */
     function deckOf()
@@ -319,6 +322,16 @@ contract TripleTriad is Ownable {
             )
         );
 
+        for (uint256 i = 0; i < 5; i++) {
+            Inventory.safeTransferFrom(
+                msg.sender,
+                address(this),
+                playerHands[msg.sender][i],
+                1,
+                ""
+            );
+        }
+
         emit NewGameStarted(msg.sender, gameData.length - 1);
     }
 
@@ -346,6 +359,16 @@ contract TripleTriad is Ownable {
         data.opponent = msg.sender;
         data.opponentHand = playerHands[msg.sender];
         data.gameOpen = false;
+
+        for (uint256 i = 0; i < 5; i++) {
+            Inventory.safeTransferFrom(
+                msg.sender,
+                address(this),
+                playerHands[msg.sender][i],
+                1,
+                ""
+            );
+        }
 
         emit GameJoined(msg.sender, _gameId);
     }
@@ -722,26 +745,28 @@ contract TripleTriad is Ownable {
             for (uint256 i = 0; i < 5; i++) {
                 if (data.opponentHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
-                        data.opponent,
+                        address(this),
                         data.player,
                         _cardId,
                         1,
                         ""
                     );
                     playerHasBuiltHand[data.opponent] = false;
+                    break;
                 }
             }
         } else {
             for (uint256 i = 0; i < 5; i++) {
                 if (data.playerHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
-                        data.player,
+                        address(this),
                         data.opponent,
                         _cardId,
                         1,
                         ""
                     );
                     playerHasBuiltHand[data.player] = false;
+                    break;
                 }
             }
         }
@@ -764,7 +789,7 @@ contract TripleTriad is Ownable {
 
         payable(msg.sender).transfer(_amount);
 
-        emit EthWithdrew(msg.sender);
+        emit EthWithdrew(msg.sender, _amount);
     }
 
     /**
@@ -783,6 +808,23 @@ contract TripleTriad is Ownable {
 
         token.safeTransfer(msg.sender, _amount);
 
-        emit ERC20TokenWithdrew(msg.sender);
+        emit ERC20TokenWithdrew(msg.sender, _tokenAddr, _amount);
+    }
+
+    /**
+     * @dev External function to withdraw the nfts. This function can be called only by owner.
+     * @param _tokenId NFT token id
+     * @param _amount Token amount
+     */
+    function withdrawNFT(uint256 _tokenId, uint256 _amount) external onlyOwner {
+        Inventory.safeTransferFrom(
+            address(this),
+            msg.sender,
+            _tokenId,
+            _amount,
+            ""
+        );
+
+        emit NFTWithdrew(msg.sender, _tokenId, _amount);
     }
 }
