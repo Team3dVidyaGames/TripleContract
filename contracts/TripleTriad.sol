@@ -55,10 +55,13 @@ contract TripleTriad is Ownable {
     event CardClaimed(address winner, uint256 cardId);
 
     /// @notice Event emitted when the cards have added.
-    event CardsAdded(address user, uint256[5] cards);
+    event CardsAdded(address user, uint256[] cards);
 
     /// @notice Event emitted when owner withdrew the nft.
     event NFTWithdrew(address owner, uint256 tokenId, uint256 amount);
+
+    /// @notice Event emitted when owner withdrew the cards from contract.
+    event CardsWithdrew(address owner, uint256[] cards);
 
     // Game data
     struct GameData {
@@ -109,12 +112,9 @@ contract TripleTriad is Ownable {
     // Note: this is not the same as inv.ownerOf()
     mapping(uint256 => mapping(uint256 => address)) public ownerOnBoard;
 
-    // Player hand status
-    // For player to be able to open a new game or join an existing game, they need to have 5 owned cards in hand
-    mapping(address => bool) public playerHasBuiltHand;
+    mapping(address => mapping(uint256 => bool)) public isCardInContract;
 
-    // Player address to PlayerHand struct
-    mapping(address => uint256[5]) public playerHands;
+    mapping(address => uint256[]) public CardsInContract;
 
     // Card positions on the grid in any given game
     // gameID => Grid(position => cardID)
@@ -138,15 +138,6 @@ contract TripleTriad is Ownable {
     modifier notFinished(uint256 _gameId) {
         GameData memory data = gameData[_gameId];
         require(!data.gameFinished, "Triple Triad: Game finished");
-        _;
-    }
-
-    // Require msg.sender to have 5 cards in hand (tokenIds)
-    modifier hasBuiltHand() {
-        require(
-            playerHasBuiltHand[msg.sender],
-            "Triple Triad: Player has not built hand"
-        );
         _;
     }
 
@@ -276,8 +267,8 @@ contract TripleTriad is Ownable {
      * @dev External function to add user selected cards from the Inventory contract into the playerHand array that the user can play with.
      * @param _cardsToAdd Cards array to add
      */
-    function buildPlayerHand(uint256[5] memory _cardsToAdd) external {
-        for (uint256 i = 0; i < 5; i++) {
+    function depositCards(uint256[] memory _cardsToAdd) external {
+        for (uint256 i = 0; i < _cardsToAdd.length; i++) {
             uint256 templateId = Inventory.allItems(_cardsToAdd[i]).templateId;
             require(
                 Inventory.balanceOf(msg.sender, _cardsToAdd[i]) > 0,
@@ -289,17 +280,69 @@ contract TripleTriad is Ownable {
             );
         }
 
-        playerHands[msg.sender] = _cardsToAdd;
-        playerHasBuiltHand[msg.sender] = true;
+        for (uint256 i = 0; i < _cardsToAdd.length; i++) {
+            Inventory.safeTransferFrom(
+                msg.sender,
+                address(this),
+                _cardsToAdd[i],
+                1,
+                ""
+            );
+
+            isCardInContract[msg.sender][_cardsToAdd[i]] = true;
+
+            CardsInContract[msg.sender].push(_cardsToAdd[i]);
+        }
 
         emit CardsAdded(msg.sender, _cardsToAdd);
     }
 
     /**
+     * @dev External function to withdraw cards from contract to their account.
+     * @param _cards Cards array to withdraw
+     */
+    function withdrawCards(uint256[] memory _cards) external {
+        for (uint256 i = 0; i < _cards.length; i++) {
+            require(
+                isCardInContract[msg.sender][_cards[i]],
+                "Triple Triad: Current card is not in contract"
+            );
+        }
+
+        for (uint256 i = 0; i < _cards.length; i++) {
+            Inventory.safeTransferFrom(
+                address(this),
+                msg.sender,
+                _cards[i],
+                1,
+                ""
+            );
+            isCardInContract[msg.sender][_cards[i]] = false;
+            CardsInContract[msg.sender][_cards[i]] = CardsInContract[
+                msg.sender
+            ][CardsInContract[msg.sender].length - 1];
+            CardsInContract[msg.sender].pop();
+        }
+
+        emit CardsWithdrew(msg.sender, _cards);
+    }
+
+    /**
      * @dev External function to start the new game. This functon can be called when caller is not in any other game and have built a hand.
+     * @param _cardsToPlay 5 cards to play
      * @param _noMercy Bool variable to check the fair hand
      */
-    function startNewGame(bool _noMercy) external notInAnyGame hasBuiltHand {
+    function startNewGame(uint256[5] memory _cardsToPlay, bool _noMercy)
+        external
+        notInAnyGame
+    {
+        for (uint256 i = 0; i < 5; i++) {
+            require(
+                isCardInContract[msg.sender][_cardsToPlay[i]],
+                "Triple Triad: Current card is not deposited yet"
+            );
+        }
+
         ingame[msg.sender] = true;
 
         gameData.push(
@@ -308,29 +351,19 @@ contract TripleTriad is Ownable {
                 address(0),
                 msg.sender,
                 address(0),
-                playerHands[msg.sender],
+                _cardsToPlay,
                 [uint256(0), uint256(0), uint256(0), uint256(0), uint256(0)],
                 block.timestamp,
                 block.timestamp + timeLimit,
                 5,
                 5,
                 0,
-                averageOfTopTwo(playerHands[msg.sender]),
+                averageOfTopTwo(_cardsToPlay),
                 true,
                 false,
                 _noMercy
             )
         );
-
-        for (uint256 i = 0; i < 5; i++) {
-            Inventory.safeTransferFrom(
-                msg.sender,
-                address(this),
-                playerHands[msg.sender][i],
-                1,
-                ""
-            );
-        }
 
         emit NewGameStarted(msg.sender, gameData.length - 1);
     }
@@ -338,9 +371,19 @@ contract TripleTriad is Ownable {
     /**
      * @dev External function to join the new game. This functon can be called when caller is not in any other game and have built a hand. 
             Game must be opened and player must have the average of two best cards from hand to be <= from the game's avgOfTopTwo (for fair play)
+     * @param _cardsToPlay 5 cards to play
      * @param _gameId Game Id
      */
-    function joinGame(uint256 _gameId) external notInAnyGame hasBuiltHand {
+    function joinGame(uint256[5] memory _cardsToPlay, uint256 _gameId)
+        external
+        notInAnyGame
+    {
+        for (uint256 i = 0; i < 5; i++) {
+            require(
+                isCardInContract[msg.sender][_cardsToPlay[i]],
+                "Triple Triad: Current card is not deposited yet"
+            );
+        }
         // set ingame status
         ingame[msg.sender] = true;
 
@@ -350,25 +393,14 @@ contract TripleTriad is Ownable {
         if (data.noMercy) {
             // Require opponent hand to be fair
             require(
-                averageOfTopTwo(playerHands[msg.sender]) <=
-                    data.avgOfTopTwo + 1,
+                averageOfTopTwo(_cardsToPlay) <= data.avgOfTopTwo + 1,
                 "Triple Triad: Hand has unfair advantage"
             );
         }
 
         data.opponent = msg.sender;
-        data.opponentHand = playerHands[msg.sender];
+        data.opponentHand = _cardsToPlay;
         data.gameOpen = false;
-
-        for (uint256 i = 0; i < 5; i++) {
-            Inventory.safeTransferFrom(
-                msg.sender,
-                address(this),
-                playerHands[msg.sender][i],
-                1,
-                ""
-            );
-        }
 
         emit GameJoined(msg.sender, _gameId);
     }
@@ -743,13 +775,6 @@ contract TripleTriad is Ownable {
 
         if (msg.sender == data.player) {
             for (uint256 i = 0; i < 5; i++) {
-                Inventory.safeTransferFrom(
-                    address(this),
-                    data.player,
-                    playerHands[data.player][i],
-                    1,
-                    ""
-                );
                 if (data.opponentHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
                         address(this),
@@ -758,26 +783,11 @@ contract TripleTriad is Ownable {
                         1,
                         ""
                     );
-                    playerHasBuiltHand[data.opponent] = false;
-                } else {
-                    Inventory.safeTransferFrom(
-                        address(this),
-                        data.opponent,
-                        playerHands[data.opponent][i],
-                        1,
-                        ""
-                    );
+                    break;
                 }
             }
         } else {
             for (uint256 i = 0; i < 5; i++) {
-                Inventory.safeTransferFrom(
-                    address(this),
-                    data.opponent,
-                    playerHands[data.opponent][i],
-                    1,
-                    ""
-                );
                 if (data.playerHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
                         address(this),
@@ -786,15 +796,7 @@ contract TripleTriad is Ownable {
                         1,
                         ""
                     );
-                    playerHasBuiltHand[data.player] = false;
-                } else {
-                    Inventory.safeTransferFrom(
-                        address(this),
-                        data.player,
-                        playerHands[data.player][i],
-                        1,
-                        ""
-                    );
+                    break;
                 }
             }
         }
