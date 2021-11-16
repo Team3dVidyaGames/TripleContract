@@ -730,7 +730,7 @@ contract TripleTriad is Ownable {
 
     /**
      * @dev External function to claim a card from a finished game.
-     * @param _gameId Ggame id
+     * @param _gameId Game id
      * @param _cardId Card id
      */
     function claimCard(uint256 _gameId, uint256 _cardId) external {
@@ -743,6 +743,13 @@ contract TripleTriad is Ownable {
 
         if (msg.sender == data.player) {
             for (uint256 i = 0; i < 5; i++) {
+                Inventory.safeTransferFrom(
+                    address(this),
+                    data.player,
+                    playerHands[data.player][i],
+                    1,
+                    ""
+                );
                 if (data.opponentHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
                         address(this),
@@ -752,11 +759,25 @@ contract TripleTriad is Ownable {
                         ""
                     );
                     playerHasBuiltHand[data.opponent] = false;
-                    break;
+                } else {
+                    Inventory.safeTransferFrom(
+                        address(this),
+                        data.opponent,
+                        playerHands[data.opponent][i],
+                        1,
+                        ""
+                    );
                 }
             }
         } else {
             for (uint256 i = 0; i < 5; i++) {
+                Inventory.safeTransferFrom(
+                    address(this),
+                    data.opponent,
+                    playerHands[data.opponent][i],
+                    1,
+                    ""
+                );
                 if (data.playerHand[i] == _cardId) {
                     Inventory.safeTransferFrom(
                         address(this),
@@ -766,7 +787,14 @@ contract TripleTriad is Ownable {
                         ""
                     );
                     playerHasBuiltHand[data.player] = false;
-                    break;
+                } else {
+                    Inventory.safeTransferFrom(
+                        address(this),
+                        data.player,
+                        playerHands[data.player][i],
+                        1,
+                        ""
+                    );
                 }
             }
         }
