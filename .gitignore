@@ -4,3 +4,5 @@
 secret.kovan.json
 secret.mumbai.json
 /public
+ERC1155Base.sol
+Inventory.sol

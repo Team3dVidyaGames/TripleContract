@@ -73,7 +73,7 @@ contract RandomNumberGenerator is VRFConsumerBase, Ownable {
     }
 
     /**
-     * @dev Public function to request randomness and returns request Id. This function can be called by only apporved games.
+     * @dev External function to request randomness and returns request Id. This function can be called by only triple triad.
      */
     function requestRandomNumber()
         external
