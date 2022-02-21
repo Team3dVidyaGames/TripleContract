@@ -257,32 +257,34 @@ contract Game is Ownable {
     }
 
     /**
-     * @dev External function to get the tempalte ids that users own.
-     * @return An array of template ids (items that fall within the Triple Triad templates range in Inventory) that _player owns
-     * @return Array with the total counts for each of these templateIds the _player owns
+     * @dev External function to get the cards and card counts for player.
+     * @param _who The player.
+     * @return An array of template ids (items that fall within the Triad3D templates range in Inventory) that player owns
+     * @return Array with the total counts for each of these templateIds the player owns
      */
     function deckOf(address _who)
         external
         view
         returns (uint256[] memory, uint256[] memory)
     {
-        // Fixed arrays of 110 because Triple Triad has 110 cards total
-        uint256[] memory playerDeck = new uint256[](110);
-        uint256[] memory cardCount = new uint256[](110);
-        uint256 index;
-        uint256 count;
+        uint256[] memory ownedItems = Inventory.getItemsByOwner(_who);
+        uint256[] memory ownedTemplates = Inventory.getTemplateIDsByTokenIDs(ownedItems);
+        uint256[] memory cards = new uint256[](ownedTemplates.length);
+        uint256[] memory cardCounts = new uint256[](ownedTemplates.length);
 
-        for (uint256 i = templateId_START; i <= templateId_END; i++) {
-            count = Inventory.balanceOf(_who, i);
-            if (count > 0) {
-                // _player owns this card!
-                playerDeck[index] = i;
-                cardCount[index] = count;
-                index++;
+        uint count;
+        uint currentTemplate;
+        for(uint i = 0; i < ownedTemplates.length; i++) {
+            // Is this a Triad3D card? 
+            uint256 templateId = ownedTemplates[i];
+            if(templateId >= templateId_START && templateId <= templateId_END) {
+                cards[count] = templateId; // put the card in cards[]
+                cardCounts[count] = Inventory.getIndividualOwnedCount(templateId, _who); // count the card amount
+                count++;
             }
         }
 
-        return (playerDeck, cardCount);
+        return (cards, cardCounts);
     }
 
     /**
@@ -292,10 +294,10 @@ contract Game is Ownable {
     function depositCards(uint256[] memory _cardsToAdd) external {
         for (uint256 i = 0; i < _cardsToAdd.length; i++) {
             uint256 templateId = Inventory.allItems(_cardsToAdd[i]).templateId;
-            require(
+            /*require(
                 Inventory.balanceOf(msg.sender, _cardsToAdd[i]) > 0,
                 "Triple Triad: Player is not the owner of this card"
-            );
+            );*/
             require(
                 templateId >= templateId_START && templateId <= templateId_END,
                 "Triple Triad: Trying to add invalid card"
