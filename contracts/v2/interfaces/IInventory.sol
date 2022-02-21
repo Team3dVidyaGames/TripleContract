@@ -41,12 +41,11 @@ interface IInventory {
     function allItems(uint256 _tokenId) external view returns (Item memory);
 
     /**
-     * @dev External function to get the token counts the account owned.
+     * @dev External function to get the user balance.
      * @param _account Address of token owner
-     * @param _id Token id
-     * @return Token counts
+     * @return Balance.
      */
-    function balanceOf(address _account, uint256 _id)
+    function balanceOf(address _account)
         external
         view
         returns (uint256);
@@ -66,4 +65,42 @@ interface IInventory {
         uint256 _amount,
         bytes memory _data
     ) external;
+
+    /**
+     * @dev External function to get owned items of _owner.
+     * @param _owner Player whose items we want to look at.
+     * @return All tokenIds the _owner owns.
+     */
+    function getItemsByOwner(
+        address _owner
+    ) 
+        external 
+        view 
+        returns(uint[] memory) ;
+
+    /**
+     * @dev External function to get templateIds of given tokenIds.
+     * @param _tokenIds The tokenIds we want to look at.
+     * @return Array of templateIds corresponding to the tokenIds.
+     */
+    function getTemplateIDsByTokenIDs(
+        uint[] memory _tokenIds
+    )
+        external
+        view
+        returns(uint[] memory);
+
+    /**
+     * @dev Total supply of any one item owned by _owner Ask for example how many of "Torch" item does the _owner have 
+     * @param _templateId The templateId we want to get a count for.
+     * @param _owner The owner of the templateId.
+     * @return Count of how many of this templateId owner owns.
+     */
+    function getIndividualOwnedCount(
+        uint256 _templateId,
+        address _owner
+    )
+        external 
+        view 
+        returns(uint256);
 }
