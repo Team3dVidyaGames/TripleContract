@@ -94,6 +94,7 @@ contract Game is Ownable {
     struct User {
         uint256 randomness;
         bytes32 requestId;
+        bool starterPackOpened;
     }
     mapping(address => User) public userData;
 
@@ -241,6 +242,7 @@ contract Game is Ownable {
             tokenIds[i] = tokenId;
         }
 
+        userData[msg.sender].starterPackOpened = true;
         emit PackOpened(msg.sender, tokenIds, block.timestamp);
     }
 
