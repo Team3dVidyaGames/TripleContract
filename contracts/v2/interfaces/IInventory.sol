@@ -55,14 +55,12 @@ interface IInventory {
      * @param _from Sender address
      * @param _to Receiver address
      * @param _id Token id
-     * @param _amount Token amount
      * @param _data Data array
      */
     function safeTransferFrom(
         address _from,
         address _to,
         uint256 _id,
-        uint256 _amount,
         bytes memory _data
     ) external;
 
@@ -103,4 +101,6 @@ interface IInventory {
         external 
         view 
         returns(uint256);
+
+    function ownerOf(uint256 tokenId) external view returns (address owner);
 }
