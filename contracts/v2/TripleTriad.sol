@@ -85,10 +85,13 @@ contract Game is Ownable {
     // A basic card struct
     struct Card {
         uint256 templateId; // same as in Inventory
+        uint256 tokenId; // erc721 tokenId 
+        uint256 ownedTemplateCount;
         uint8 top;
         uint8 right;
         uint8 bottom;
         uint8 left;
+        uint8 level;
     }
 
     struct User {
@@ -216,8 +219,9 @@ contract Game is Ownable {
 
     /**
      * @dev External function to give the user 7 random level 1 cards from ranks. This function can be called only by RandomNumberGenerator contract.
+     * @return Array of tokenIds minted
      */
-    function openStarterPack() external {
+    function openStarterPack() external returns (uint256[] memory) {
         require(
             canOpenStarterPack[msg.sender],
             "Triple Triad: Caller is not the RandomNumberGenerator"
@@ -244,6 +248,8 @@ contract Game is Ownable {
 
         userData[msg.sender].starterPackOpened = true;
         emit PackOpened(msg.sender, tokenIds, block.timestamp);
+
+        return tokenIds;
     }
 
     // After receiving randomness, RNG contract calls this to set canOpenStarterPack true for user 
@@ -257,34 +263,39 @@ contract Game is Ownable {
     }
 
     /**
-     * @dev External function to get the cards and card counts for player.
-     * @param _who The player.
-     * @return An array of template ids (items that fall within the Triad3D templates range in Inventory) that player owns
-     * @return Array with the total counts for each of these templateIds the player owns
+     * @dev External function to get the cards and card counts for player
+     * @param _who The player
+     * @return Array of Card structs 
      */
     function deckOf(address _who)
         external
         view
-        returns (uint256[] memory, uint256[] memory)
+        returns (Card[] memory)
     {
         uint256[] memory ownedItems = Inventory.getItemsByOwner(_who);
         uint256[] memory ownedTemplates = Inventory.getTemplateIDsByTokenIDs(ownedItems);
-        uint256[] memory cards = new uint256[](ownedTemplates.length);
-        uint256[] memory cardCounts = new uint256[](ownedTemplates.length);
+           Card[] memory Cards = new Card[](110); // Triad3D has max 110 unique templates so it is enough.  
 
         uint count;
-        uint currentTemplate;
         for(uint i = 0; i < ownedTemplates.length; i++) {
-            // Is this a Triad3D card? 
+            uint256 tokenId = ownedItems[i];
             uint256 templateId = ownedTemplates[i];
             if(templateId >= templateId_START && templateId <= templateId_END) {
-                cards[count] = templateId; // put the card in cards[]
-                cardCounts[count] = Inventory.getIndividualOwnedCount(templateId, _who); // count the card amount
+                Card memory card;
+                card.templateId = Inventory.allItems(tokenId).templateId;
+                card.ownedTemplateCount = Inventory.getIndividualOwnedCount(templateId, _who);
+                card.top = Inventory.allItems(tokenId).feature1;
+                card.right = Inventory.allItems(tokenId).feature2;
+                card.bottom = Inventory.allItems(tokenId).feature3;
+                card.left = Inventory.allItems(tokenId).feature4;
+                card.level = Inventory.allItems(tokenId).equipmentPosition;
+                card.tokenId = tokenId;
+                Cards[i] = card;
                 count++;
             }
         }
 
-        return (cards, cardCounts);
+        return (Cards);
     }
 
     /**
@@ -294,27 +305,19 @@ contract Game is Ownable {
     function depositCards(uint256[] memory _cardsToAdd) external {
         for (uint256 i = 0; i < _cardsToAdd.length; i++) {
             uint256 templateId = Inventory.allItems(_cardsToAdd[i]).templateId;
-            /*require(
-                Inventory.balanceOf(msg.sender, _cardsToAdd[i]) > 0,
-                "Triple Triad: Player is not the owner of this card"
-            );*/
+            require(
+                Inventory.ownerOf(_cardsToAdd[i]) == msg.sender,
+                "Triad3D: Player is not the owner of this card"
+            );
             require(
                 templateId >= templateId_START && templateId <= templateId_END,
-                "Triple Triad: Trying to add invalid card"
+                "Triad3D: Trying to add invalid card"
             );
         }
 
         for (uint256 i = 0; i < _cardsToAdd.length; i++) {
-            Inventory.safeTransferFrom(
-                msg.sender,
-                address(this),
-                _cardsToAdd[i],
-                1,
-                ""
-            );
-
+            Inventory.safeTransferFrom(msg.sender, address(this), _cardsToAdd[i], "");
             isCardInContract[msg.sender][_cardsToAdd[i]] = true;
-
             CardsInContract[msg.sender].push(_cardsToAdd[i]);
         }
 
@@ -329,22 +332,14 @@ contract Game is Ownable {
         for (uint256 i = 0; i < _cards.length; i++) {
             require(
                 isCardInContract[msg.sender][_cards[i]],
-                "Triple Triad: Current card is not in contract"
+                "Triad3D: Current card is not in contract"
             );
         }
 
         for (uint256 i = 0; i < _cards.length; i++) {
-            Inventory.safeTransferFrom(
-                address(this),
-                msg.sender,
-                _cards[i],
-                1,
-                ""
-            );
+            Inventory.safeTransferFrom(address(this), msg.sender, _cards[i], "");
             isCardInContract[msg.sender][_cards[i]] = false;
-            CardsInContract[msg.sender][_cards[i]] = CardsInContract[
-                msg.sender
-            ][CardsInContract[msg.sender].length - 1];
+            CardsInContract[msg.sender][_cards[i]] = CardsInContract[msg.sender][CardsInContract[msg.sender].length - 1];
             CardsInContract[msg.sender].pop();
         }
 
@@ -821,7 +816,6 @@ contract Game is Ownable {
                         address(this),
                         data.player,
                         _cardId,
-                        1,
                         ""
                     );
                     break;
@@ -834,7 +828,6 @@ contract Game is Ownable {
                         address(this),
                         data.opponent,
                         _cardId,
-                        1,
                         ""
                     );
                     break;
@@ -885,17 +878,18 @@ contract Game is Ownable {
     /**
      * @dev External function to withdraw the nfts. This function can be called only by owner.
      * @param _tokenId NFT token id
-     * @param _amount Token amount
-     */
-    function withdrawNFT(uint256 _tokenId, uint256 _amount) external onlyOwner {
+
+     cube3d: probably bad idea to allow admin to withdraw cards? 
+     
+    function withdrawNFT(uint256 _tokenId) external onlyOwner {
         Inventory.safeTransferFrom(
             address(this),
             msg.sender,
             _tokenId,
-            _amount,
             ""
         );
 
-        emit NFTWithdrew(msg.sender, _tokenId, _amount);
+        emit NFTWithdrew(msg.sender, _tokenId);
     }
+    */
 }
